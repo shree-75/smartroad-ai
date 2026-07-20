@@ -1,17 +1,25 @@
+import Navbar from "../components/layout/Navbar";
+import Hero from "../components/home/Hero";
+
 function Home() {
   return (
-    <main style={{ paddingTop: "90px" }}>
-      <h1>Welcome to SmartRoad AI</h1>
-      <p>Landing Page - Hero Section Coming Soon</p>
+    <>
+      <Navbar />
 
-      <section id="features" style={{ marginTop: "600px" }}>
-        <h2>Features Section</h2>
-      </section>
+      <main>
+        <Hero />
 
-      <section id="about" style={{ marginTop: "600px" }}>
-        <h2>About Section</h2>
-      </section>
-    </main>
+        <section id="features" style={{ minHeight: "100vh", padding: "100px 24px" }}>
+          <h2>Features Section</h2>
+          <p>This section will be implemented in the next step.</p>
+        </section>
+
+        <section id="about" style={{ minHeight: "100vh", padding: "100px 24px" }}>
+          <h2>About Section</h2>
+          <p>This section will be implemented later.</p>
+        </section>
+      </main>
+    </>
   );
 }
 
