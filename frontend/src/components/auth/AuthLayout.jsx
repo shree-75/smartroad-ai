@@ -1,13 +1,13 @@
 /**
  * @fileoverview AuthLayout.jsx - Reusable Layout Wrapper for Authentication Pages
  * @module components/auth/AuthLayout
- * @version 1.0.0
+ * @version 2.0.0
  * @author Antigravity Pair Programmer
  * 
  * Responsibilities:
- * - Wrap authentication form panels (login, register, reset-password).
+ * - Wrap authentication form panels (login, register).
  * - Render branding elements (SmartRoad AI logotype, description).
- * - Implement premium glassmorphic visual styles via Auth.css.
+ * - Implement premium glassmorphic visual styles via Auth.css classes.
  * 
  * Exported APIs:
  * - AuthLayout (Component)
@@ -27,27 +27,23 @@ import '../../styles/Auth.css';
  */
 export const AuthLayout = ({ children, title, subtitle }) => {
   return (
-    <div className="auth-page">
-      <div className="auth-container">
+    <div className="auth-layout">
+      {/* Reusable Glassmorphism Card */}
+      <div className="auth-card">
         {/* Brand Header */}
         <div className="auth-header">
-          <div className="auth-brand">
-            <span className="auth-logo-icon">🚗</span>
-            <h1 className="auth-logo-text">SmartRoad <span className="logo-accent">AI</span></h1>
+          <div className="auth-logo">
+            <span className="auth-logo-icon" style={{ fontSize: '1.5rem' }}>🚗</span>
+            <span className="auth-logo-text">
+              SmartRoad <span className="highlight">AI</span>
+            </span>
           </div>
           {title && <h2 className="auth-title">{title}</h2>}
           {subtitle && <p className="auth-subtitle">{subtitle}</p>}
         </div>
 
-        {/* Content Box */}
-        <div className="auth-card">
-          {children}
-        </div>
-
-        {/* Footer Brand Info */}
-        <div className="auth-footer-branding">
-          <p>© {new Date().getFullYear()} SmartRoad AI. Precision Analytics & Road Safety.</p>
-        </div>
+        {/* Form Content */}
+        {children}
       </div>
     </div>
   );

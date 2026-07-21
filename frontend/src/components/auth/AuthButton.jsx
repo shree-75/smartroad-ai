@@ -1,19 +1,21 @@
 /**
  * @fileoverview AuthButton.jsx - Reusable Authentication Action Button
  * @module components/auth/AuthButton
- * @version 1.0.0
+ * @version 2.0.0
  * @author Antigravity Pair Programmer
  * 
  * Responsibilities:
  * - Render action triggers for form submits.
  * - Manage load/authenticating animation states.
  * - Enforce disable attributes when forms submit.
+ * - Map to classes from Auth.css for native styling.
  * 
  * Exported APIs:
  * - AuthButton (Component)
  */
 
 import React from 'react';
+import '../../styles/Auth.css';
 
 /**
  * Reusable Auth Form Submission Button.
@@ -39,40 +41,12 @@ export const AuthButton = ({
       type={type}
       disabled={disabled || loading}
       onClick={onClick}
-      className={`auth-btn ${loading ? 'auth-btn-loading' : ''}`}
-      style={{
-        width: '100%',
-        padding: '0.85rem 1rem',
-        fontSize: '0.95rem',
-        fontWeight: 600,
-        borderRadius: '0.5rem',
-        border: 'none',
-        backgroundColor: loading || disabled ? 'rgba(59, 130, 246, 0.5)' : 'var(--color-primary, #3b82f6)',
-        color: '#ffffff',
-        cursor: loading || disabled ? 'not-allowed' : 'pointer',
-        transition: 'background-color 0.2s, transform 0.1s',
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center',
-        gap: '0.5rem',
-        outline: 'none',
-        boxSizing: 'border-box'
-      }}
+      className="form-button"
       {...buttonProps}
     >
       {loading ? (
         <>
-          <div 
-            className="btn-spinner"
-            style={{
-              width: '18px',
-              height: '18px',
-              border: '2px solid rgba(255, 255, 255, 0.3)',
-              borderTop: '2px solid #ffffff',
-              borderRadius: '50%',
-              animation: 'spin 1s linear infinite'
-            }}
-          />
+          <div className="auth-loader" />
           <span>Authenticating...</span>
         </>
       ) : (

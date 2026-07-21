@@ -1,7 +1,7 @@
 /**
  * @fileoverview RegisterForm.jsx - Complete Interactive Registration Form Component
  * @module components/auth/RegisterForm
- * @version 1.0.0
+ * @version 2.0.0
  * @author Antigravity Pair Programmer
  * 
  * Responsibilities:
@@ -27,6 +27,7 @@ import { FormInput } from './FormInput.jsx';
 import { PasswordInput } from './PasswordInput.jsx';
 import { AuthButton } from './AuthButton.jsx';
 import { ROUTE_PATHS } from '../../constants/routes.constants.js';
+import '../../styles/Auth.css';
 
 /**
  * RegisterForm Component for user signup.
@@ -102,40 +103,18 @@ export const RegisterForm = () => {
     <form onSubmit={handleSubmit} noValidate className="auth-form">
       {/* Success Alert */}
       {successMessage && (
-        <div 
-          className="auth-alert alert-success"
-          role="alert"
-          style={{
-            padding: '0.75rem 1rem',
-            marginBottom: '1.25rem',
-            borderRadius: '0.5rem',
-            backgroundColor: 'rgba(16, 185, 129, 0.15)',
-            border: '1px solid var(--color-success, #10b981)',
-            color: 'var(--color-success, #10b981)',
-            fontSize: '0.875rem'
-          }}
-        >
-          {successMessage}
+        <div className="auth-alert auth-alert-success" role="alert">
+          <div>{successMessage}</div>
         </div>
       )}
 
       {/* API Server Error Alert */}
       {apiError && (
-        <div 
-          className="auth-alert alert-danger" 
-          role="alert"
-          style={{
-            padding: '0.75rem 1rem',
-            marginBottom: '1.25rem',
-            borderRadius: '0.5rem',
-            backgroundColor: 'rgba(239, 68, 68, 0.15)',
-            border: '1px solid var(--color-error, #ef4444)',
-            color: 'var(--color-error, #ef4444)',
-            fontSize: '0.875rem'
-          }}
-        >
-          <strong>Registration Error: </strong>
-          {apiError}
+        <div className="auth-alert auth-alert-error" role="alert">
+          <div>
+            <strong>Registration Error: </strong>
+            {apiError}
+          </div>
         </div>
       )}
 
@@ -214,34 +193,19 @@ export const RegisterForm = () => {
       />
 
       {/* Submit Button */}
-      <div style={{ marginTop: '1.5rem', marginBottom: '1.5rem' }}>
-        <AuthButton loading={submitting} disabled={submitting}>
-          Create Account
-        </AuthButton>
-      </div>
+      <AuthButton loading={submitting} disabled={submitting}>
+        Create Account
+      </AuthButton>
 
       {/* Direct sign in redirect */}
-      <p 
-        className="auth-redirect-message"
-        style={{
-          textAlign: 'center',
-          fontSize: '0.875rem',
-          margin: 0,
-          color: 'rgba(255, 255, 255, 0.6)'
-        }}
-      >
-        Already have an account?{' '}
-        <Link 
-          to={ROUTE_PATHS.LOGIN} 
-          style={{
-            color: 'var(--color-primary, #3b82f6)',
-            textDecoration: 'none',
-            fontWeight: 600
-          }}
-        >
-          Sign In
-        </Link>
-      </p>
+      <div className="auth-links-row" style={{ justifyContent: 'center' }}>
+        <span style={{ fontSize: '13px', color: 'var(--text-secondary, #9ca3af)', fontFamily: 'var(--font-body)' }}>
+          Already have an account?{' '}
+          <Link to={ROUTE_PATHS.LOGIN} className="auth-link" style={{ fontWeight: 600, color: 'var(--color-cyan, #06b6d4)' }}>
+            Sign In
+          </Link>
+        </span>
+      </div>
     </form>
   );
 };

@@ -1,14 +1,14 @@
 /**
  * @fileoverview LoginForm.jsx - Complete Interactive Login Form Component
  * @module components/auth/LoginForm
- * @version 1.0.0
+ * @version 2.0.0
  * @author Antigravity Pair Programmer
  * 
  * Responsibilities:
  * - Render email and password input elements.
  * - Enforce inline validation constraints using validation.js.
  * - Capture user login actions and delegate to AuthContext.
- * - Display friendly form-level API errors mapping from context.
+ * - Display friendly form-level API errors mapping from context using Auth.css styles.
  * 
  * Exported APIs:
  * - LoginForm (Component)
@@ -22,6 +22,7 @@ import { FormInput } from './FormInput.jsx';
 import { PasswordInput } from './PasswordInput.jsx';
 import { AuthButton } from './AuthButton.jsx';
 import { ROUTE_PATHS } from '../../constants/routes.constants.js';
+import '../../styles/Auth.css';
 
 /**
  * LoginForm Component for user authentication.
@@ -78,21 +79,11 @@ export const LoginForm = () => {
     <form onSubmit={handleSubmit} noValidate className="auth-form">
       {/* Global API Server Error Alert */}
       {apiError && (
-        <div 
-          className="auth-alert alert-danger" 
-          role="alert"
-          style={{
-            padding: '0.75rem 1rem',
-            marginBottom: '1.25rem',
-            borderRadius: '0.5rem',
-            backgroundColor: 'rgba(239, 68, 68, 0.15)',
-            border: '1px solid var(--color-error, #ef4444)',
-            color: 'var(--color-error, #ef4444)',
-            fontSize: '0.875rem'
-          }}
-        >
-          <strong>Authentication Error: </strong>
-          {apiError.message}
+        <div className="auth-alert auth-alert-error" role="alert">
+          <div>
+            <strong>Authentication Error: </strong>
+            {apiError.message}
+          </div>
         </div>
       )}
 
@@ -135,23 +126,23 @@ export const LoginForm = () => {
 
       {/* Form Extra Options (Remember Me & Forgot Pass) */}
       <div 
-        className="auth-options"
         style={{
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          marginBottom: '1.5rem',
-          fontSize: '0.85rem'
+          width: '100%',
+          fontSize: '13px',
+          fontFamily: 'var(--font-body)'
         }}
       >
         <label 
-          className="remember-me-label"
           style={{
             display: 'flex',
             alignItems: 'center',
-            gap: '0.5rem',
-            color: 'rgba(255, 255, 255, 0.7)',
-            cursor: 'pointer'
+            gap: '8px',
+            color: 'var(--text-secondary, #9ca3af)',
+            cursor: 'pointer',
+            userSelect: 'none'
           }}
         >
           <input
@@ -164,48 +155,25 @@ export const LoginForm = () => {
           Remember me
         </label>
 
-        <Link 
-          to={ROUTE_PATHS.FORGOT_PASSWORD} 
-          className="forgot-password-link"
-          style={{
-            color: 'var(--color-primary, #3b82f6)',
-            textDecoration: 'none',
-            transition: 'opacity 0.2s'
-          }}
-        >
+        <Link to={ROUTE_PATHS.FORGOT_PASSWORD} className="auth-link">
           Forgot password?
         </Link>
       </div>
 
       {/* Action Submit Button */}
-      <div style={{ marginTop: '1.5rem', marginBottom: '1.5rem' }}>
-        <AuthButton loading={authenticating} disabled={authenticating}>
-          Sign In
-        </AuthButton>
-      </div>
+      <AuthButton loading={authenticating} disabled={authenticating}>
+        Sign In
+      </AuthButton>
 
-      {/* Bottom redirection message */}
-      <p 
-        className="auth-redirect-message"
-        style={{
-          textAlign: 'center',
-          fontSize: '0.875rem',
-          margin: 0,
-          color: 'rgba(255, 255, 255, 0.6)'
-        }}
-      >
-        Don't have an account?{' '}
-        <Link 
-          to={ROUTE_PATHS.REGISTER} 
-          style={{
-            color: 'var(--color-primary, #3b82f6)',
-            textDecoration: 'none',
-            fontWeight: 600
-          }}
-        >
-          Sign Up
-        </Link>
-      </p>
+      {/* Bottom redirection row */}
+      <div className="auth-links-row" style={{ justifyContent: 'center' }}>
+        <span style={{ fontSize: '13px', color: 'var(--text-secondary, #9ca3af)', fontFamily: 'var(--font-body)' }}>
+          Don't have an account?{' '}
+          <Link to={ROUTE_PATHS.REGISTER} className="auth-link" style={{ fontWeight: 600, color: 'var(--color-cyan, #06b6d4)' }}>
+            Sign Up
+          </Link>
+        </span>
+      </div>
     </form>
   );
 };

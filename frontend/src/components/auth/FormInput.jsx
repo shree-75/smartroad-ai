@@ -1,18 +1,20 @@
 /**
  * @fileoverview FormInput.jsx - Standard Reusable Input Form Field
  * @module components/auth/FormInput
- * @version 1.0.0
+ * @version 2.0.0
  * @author Antigravity Pair Programmer
  * 
  * Responsibilities:
  * - Render an input field with label and error messages.
  * - Manage focus, accessibility states (aria properties), and keyboard input.
+ * - Map to classes from Auth.css for native styling.
  * 
  * Exported APIs:
  * - FormInput (Component)
  */
 
 import React from 'react';
+import '../../styles/Auth.css';
 
 /**
  * Standard Form Field Component.
@@ -26,7 +28,6 @@ import React from 'react';
  * @param {string} [props.error] - Field-level error validation message.
  * @param {string} [props.placeholder] - Help message to show in the field.
  * @param {boolean} [props.required=false] - Field required validation flag.
- * @param {object} [props.inputProps] - Direct input override properties.
  * @returns {React.JSX.Element} The FormInput component.
  */
 export const FormInput = ({
@@ -43,19 +44,9 @@ export const FormInput = ({
   const errorId = `${id}-error`;
 
   return (
-    <div className={`auth-form-group ${error ? 'has-error' : ''}`} style={{ marginBottom: '1.25rem' }}>
-      <label 
-        htmlFor={id} 
-        className="auth-label"
-        style={{
-          display: 'block',
-          marginBottom: '0.5rem',
-          fontSize: '0.85rem',
-          fontWeight: 500,
-          color: 'var(--color-text, #f3f4f6)'
-        }}
-      >
-        {label} {required && <span className="required-indicator" style={{ color: 'var(--color-error, #ef4444)' }}>*</span>}
+    <div className="form-group">
+      <label htmlFor={id} className="form-label">
+        {label} {required && <span style={{ color: 'var(--color-rose, #f43f5e)' }}>*</span>}
       </label>
       
       <input
@@ -67,32 +58,21 @@ export const FormInput = ({
         required={required}
         aria-invalid={error ? 'true' : 'false'}
         aria-describedby={error ? errorId : undefined}
-        className="auth-input"
-        style={{
-          width: '100%',
-          padding: '0.75rem 1rem',
-          fontSize: '0.95rem',
-          borderRadius: '0.5rem',
-          border: error ? '1px solid var(--color-error, #ef4444)' : '1px solid rgba(255, 255, 255, 0.1)',
-          backgroundColor: 'rgba(255, 255, 255, 0.05)',
-          color: 'var(--color-text, #f3f4f6)',
-          outline: 'none',
-          boxSizing: 'border-box',
-          transition: 'border-color 0.2s, box-shadow 0.2s'
-        }}
+        className="form-input"
+        style={error ? { borderColor: 'var(--color-rose, #f43f5e)' } : {}}
         {...inputProps}
       />
 
       {error && (
         <span 
           id={errorId} 
-          className="auth-error-message"
           role="alert"
           style={{
             display: 'block',
-            marginTop: '0.35rem',
-            fontSize: '0.8rem',
-            color: 'var(--color-error, #ef4444)'
+            marginTop: '4px',
+            fontSize: '11.5px',
+            color: 'var(--color-rose, #f43f5e)',
+            fontFamily: 'var(--font-body)'
           }}
         >
           {error}
