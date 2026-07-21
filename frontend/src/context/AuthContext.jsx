@@ -22,7 +22,7 @@
  * - constants/auth.constants
  */
 
-import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { loginUser, logoutUser, refreshAccessToken, getCurrentUser } from '../services/authService.js';
 import { setAccessToken, removeAccessToken, decodeToken } from '../utils/token.js';
 import { ERROR_CATEGORIES } from '../constants/auth.constants.js';
@@ -46,6 +46,12 @@ export const AuthProvider = ({ children }) => {
   const [initializing, setInitializing] = useState(true);
   const [authenticating, setAuthenticating] = useState(false);
   const [error, setError] = useState(null);
+
+  // Maintain reference to authentication state to prevent stale closure loops in callback dependency trees
+  const isAuthenticatedRef = useRef(isAuthenticated);
+  useEffect(() => {
+    isAuthenticatedRef.current = isAuthenticated;
+  }, [isAuthenticated]);
 
   /**
    * Fetches the current user profile from the server using the active access token.
@@ -72,6 +78,12 @@ export const AuthProvider = ({ children }) => {
    * @returns {Promise<void>}
    */
   const refreshSession = useCallback(async () => {
+    // Proactive Guard: Avoid redundant refresh calls if session is already authenticated
+    if (isAuthenticatedRef.current) {
+      setInitializing(false);
+      return;
+    }
+
     try {
       setError(null);
       const res = await refreshAccessToken();
@@ -93,7 +105,7 @@ export const AuthProvider = ({ children }) => {
       setIsAuthenticated(false);
       
       // If client was previously registered as authenticated, raise session expiry error
-      if (isAuthenticated) {
+      if (isAuthenticatedRef.current) {
         setError({
           type: ERROR_CATEGORIES.SESSION_EXPIRED,
           message: 'Your session has expired. Please sign in again.'
@@ -102,7 +114,7 @@ export const AuthProvider = ({ children }) => {
     } finally {
       setInitializing(false);
     }
-  }, [isAuthenticated, fetchUserProfile]);
+  }, [fetchUserProfile]);
 
   /**
    * Authenticates user using email and password, caches tokens, and initializes profiles.
