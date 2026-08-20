@@ -1,18 +1,3 @@
-/**
- * @fileoverview App.jsx - Main Application Component and Router Config
- * @module App
- * @version 1.0.0
- * @author Antigravity Pair Programmer
- * 
- * Responsibilities:
- * - Wrap application inside AuthProvider container.
- * - Establish react-router router endpoints.
- * - Guard routes using ProtectedRoute and PublicRoute component filters.
- * 
- * Exported APIs:
- * - App (Component)
- */
-
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext.jsx';
@@ -21,6 +6,10 @@ import { PublicRoute } from './components/auth/PublicRoute.jsx';
 import { Login } from './pages/Login.jsx';
 import { Register } from './pages/Register.jsx';
 import { Dashboard } from './pages/Dashboard.jsx';
+import { DriverMonitor } from './pages/DriverMonitor.jsx';
+import { VehicleManagement } from './pages/VehicleManagement.jsx';
+import { DriverProfilePage } from './pages/DriverProfilePage.jsx';
+import { NavigationMap } from './pages/NavigationMap.jsx';
 import { ROUTE_PATHS } from './constants/routes.constants.js';
 
 export const App = () => {
@@ -37,6 +26,10 @@ export const App = () => {
           {/* Protected Main Views */}
           <Route element={<ProtectedRoute />}>
             <Route path={ROUTE_PATHS.DASHBOARD} element={<Dashboard />} />
+            <Route path={ROUTE_PATHS.DRIVER_MONITOR} element={<DriverMonitor />} />
+            <Route path={ROUTE_PATHS.VEHICLES} element={<VehicleManagement />} />
+            <Route path={ROUTE_PATHS.PROFILE} element={<DriverProfilePage />} />
+            <Route path={ROUTE_PATHS.NAV_MAP} element={<NavigationMap />} />
           </Route>
 
           {/* Root Redirection */}

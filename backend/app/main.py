@@ -3,9 +3,21 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.api.auth import router as auth_router
-from app.db.session import engine, Base
+from app.api.telemetry import router as telemetry_router
+from app.api.session import router as session_router
+from app.api.profile import router as profile_router
+from app.api.vehicle import router as vehicle_router
+from app.api.emergency import router as emergency_router
 
-# Create tables automatically for local/SQLite dev (in case migrations are not run)
+from app.db.session import engine, Base
+import app.models.user
+import app.models.telemetry
+import app.models.session
+import app.models.profile
+import app.models.vehicle
+import app.models.emergency
+
+# Create tables automatically for local/SQLite dev
 try:
     Base.metadata.create_all(bind=engine)
 except Exception as e:
@@ -25,9 +37,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include Authentication Routes
+# Include API Routers
 app.include_router(auth_router, prefix=settings.API_V1_STR)
+app.include_router(telemetry_router, prefix=settings.API_V1_STR)
+app.include_router(session_router, prefix=settings.API_V1_STR)
+app.include_router(profile_router, prefix=settings.API_V1_STR)
+app.include_router(vehicle_router, prefix=settings.API_V1_STR)
+app.include_router(emergency_router, prefix=settings.API_V1_STR)
 
 @app.get("/")
 def read_root():
-    return {"message": "Welcome to SmartRoad AI Telemetry API Service"}
+    return {"message": "Welcome to SmartRoad AI Telemetry & Emergency Response Service"}

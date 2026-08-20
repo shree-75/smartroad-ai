@@ -62,6 +62,7 @@ def register(user_in: UserCreate, db: Session = Depends(get_db)):
         email=user_in.email,
         hashed_password=hashed_password,
         name=user_in.name,
+        role=user_in.role or "driver",
         is_active=True
     )
     db.add(user)
