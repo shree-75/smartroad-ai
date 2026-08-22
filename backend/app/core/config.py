@@ -5,7 +5,7 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "SmartRoad AI API"
-    API_V1_STR: str = "/api"
+    API_V1_STR: str = "/api/v1"
     
     # Security Configuration
     SECRET_KEY: str = os.getenv("SECRET_KEY", "super-secret-smartroad-development-key-value-123456789")

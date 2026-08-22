@@ -8,6 +8,7 @@ from app.api.session import router as session_router
 from app.api.profile import router as profile_router
 from app.api.vehicle import router as vehicle_router
 from app.api.emergency import router as emergency_router
+from app.api.iot import router as iot_router
 
 from app.db.session import engine, Base
 import app.models.user
@@ -16,6 +17,7 @@ import app.models.session
 import app.models.profile
 import app.models.vehicle
 import app.models.emergency
+import app.models.iot
 
 # Create tables automatically for local/SQLite dev
 try:
@@ -44,6 +46,7 @@ app.include_router(session_router, prefix=settings.API_V1_STR)
 app.include_router(profile_router, prefix=settings.API_V1_STR)
 app.include_router(vehicle_router, prefix=settings.API_V1_STR)
 app.include_router(emergency_router, prefix=settings.API_V1_STR)
+app.include_router(iot_router, prefix=settings.API_V1_STR)
 
 @app.get("/")
 def read_root():

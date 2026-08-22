@@ -30,7 +30,7 @@ export const TIMEOUT_MS = 10000;
  * Fallback local API endpoint URL.
  * @type {string}
  */
-export const DEFAULT_API_URL = 'http://127.0.0.1:8000/api';
+export const DEFAULT_API_URL = 'http://127.0.0.1:8000/api/v1';
 
 /**
  * Reusable HTTP header names.

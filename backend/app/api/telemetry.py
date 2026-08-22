@@ -1,3 +1,4 @@
+import asyncio
 from typing import List, Optional, Dict
 from fastapi import APIRouter, Depends, HTTPException, status, WebSocket, WebSocketDisconnect, Query
 from fastapi.encoders import jsonable_encoder
@@ -16,7 +17,8 @@ router = APIRouter(prefix="/telemetry", tags=["telemetry"])
 
 class ConnectionManager:
     """
-    Manages active WebSocket connections indexed by user ID to guarantee user isolation.
+    Manages active WebSocket connections indexed by user ID to guarantee user isolation,
+    with global broadcast capability for IoT & camera telemetry streams.
     """
     def __init__(self):
         self.active_connections: Dict[int, List[WebSocket]] = {}
@@ -45,7 +47,33 @@ class ConnectionManager:
             for dead_socket in dead_sockets:
                 self.disconnect(dead_socket, user_id)
 
+    async def broadcast(self, message: dict):
+        """
+        Broadcasts message to all active WebSocket clients.
+        """
+        for user_id, connections in list(self.active_connections.items()):
+            dead_sockets = []
+            for connection in list(connections):
+                try:
+                    await connection.send_json(message)
+                except Exception:
+                    dead_sockets.append(connection)
+            for dead_socket in dead_sockets:
+                self.disconnect(dead_socket, user_id)
+
 manager = ConnectionManager()
+
+def broadcast_telemetry_update(message: dict):
+    """
+    Module-level helper to broadcast real-time telemetry or IoT updates
+    across active WebSocket connections.
+    """
+    try:
+        loop = asyncio.get_running_loop()
+        if loop.is_running():
+            loop.create_task(manager.broadcast(message))
+    except RuntimeError:
+        pass
 
 def parse_ws_token(token: str) -> int:
     try:

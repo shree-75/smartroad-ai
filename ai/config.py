@@ -10,13 +10,13 @@ MAR_SIGMA_FACTOR = 2.0         # k factor for dynamic MAR threshold (μ + k * σ
 YAW_DEVIATION_FACTOR = 1.8     # k factor for head yaw deviation threshold
 ADAPTATION_RATE = 0.02         # Exponential moving average rate for baseline adaptation in NORMAL state
 
-# 2. Multimodal Fusion Initial Research Weights (Must sum to 1.0)
+# 2. Multimodal Fusion Initial Configurable Research Weights (Must sum to 1.0)
 VISION_WEIGHT = 0.50
-BIOMETRIC_WEIGHT = 0.30
-VEHICLE_WEIGHT = 0.20
+BIOMETRIC_WEIGHT = 0.30        # IoT Sensors (Heart Rate, SpO2, Alcohol, Impact Vibration)
+VEHICLE_WEIGHT = 0.00
+ROAD_CONTEXT_WEIGHT = 0.20     # Spatial GPS Accident Hotspot Context
 
 # 3. Context & Road Risk Parameters (Tier 4 Architecture Interface)
-ROAD_CONTEXT_WEIGHT = 0.0      # Active in Tier 4 context-aware risk integration
 HOTSPOT_RISK_MULTIPLIER = 1.25 # Multiplier when vehicle enters a spatial accident hotspot zone
 
 # 4. Research Hypothesis Statement
