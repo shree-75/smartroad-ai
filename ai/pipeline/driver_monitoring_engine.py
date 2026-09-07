@@ -75,18 +75,19 @@ class ResearchDriverMonitoringEngine:
 
         # Draw Bounding Box and Extract Sub-landmarks
         annotated_frame = self.face_detector.draw(annotated_frame, detection)
-        landmarks = detection["landmarks"]
         image_size = detection["image_size"]
 
-        left_eye = landmarks[self.face_detector.LEFT_EYE]
-        right_eye = landmarks[self.face_detector.RIGHT_EYE]
-        mouth = landmarks[self.face_detector.MOUTH_INNER]
+        # Use direct landmark keys from updated face_detector
+        left_eye  = detection["left_eye"]
+        right_eye = detection["right_eye"]
+        mouth     = detection["mouth"]
+        landmarks = detection["landmarks"]   # dict kept for head_pose compatibility
 
         # 1. Compute Raw Vision Metrics
-        drowsy_info = self.drowsiness_detector.update(left_eye, right_eye)
-        yawn_info = self.yawn_detector.update(mouth)
-        head_info = self.head_pose_estimator.update(landmarks, image_size)
-        object_info = self.object_detector.update(frame, detection)
+        drowsy_info  = self.drowsiness_detector.update(left_eye, right_eye)
+        yawn_info    = self.yawn_detector.update(mouth)
+        head_info    = self.head_pose_estimator.update(landmarks, image_size)
+        object_info  = self.object_detector.update(frame, detection)
 
         ear_val = drowsy_info["ear"]
         mar_val = yawn_info["mar"]
@@ -144,6 +145,22 @@ class ResearchDriverMonitoringEngine:
         cv2.putText(annotated_frame, f"STATUS: {driver_status.upper()}", (20, 35), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (6, 182, 212), 2)
         cv2.putText(annotated_frame, f"EAR: {ear_val:.3f} (μ: {driver_profile.ear_mean:.3f})", (20, 65), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 1)
         cv2.putText(annotated_frame, f"RISK SCORE: {score_info['score']} / 100 ({score_info['level']})", (20, 95), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (16, 185, 129), 2)
+
+        # Draw Phone Detections and Alerts
+        if object_info.get("phone_boxes"):
+            for pbox in object_info["phone_boxes"]:
+                px, py, pw, ph = pbox["bbox"]
+                label = pbox.get("label", "PHONE")
+                cv2.rectangle(annotated_frame, (px, py), (px + pw, py + ph), (0, 0, 255), 2)
+                cv2.putText(annotated_frame, label, (px, max(20, py - 8)),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 0, 255), 2)
+
+        if object_info.get("possible_phone_detected"):
+            cv2.putText(annotated_frame, "DISTRACTION: PHONE IN USE!", (20, 125),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 0, 255), 2)
+        else:
+            cv2.putText(annotated_frame, "PHONE: NOT IN USE", (20, 125),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (16, 185, 129), 1)
 
         # Calculate forward attention percentage
         attention_pct = 100.0 if head_info["orientation"] == "LOOKING_FORWARD" else 40.0

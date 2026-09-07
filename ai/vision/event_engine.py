@@ -53,13 +53,12 @@ class DriverMonitoringEngine:
 
         # Draw Face Bounding Box
         annotated_frame = self.face_detector.draw(annotated_frame, detection)
-        landmarks = detection["landmarks"]
         image_size = detection["image_size"]
 
-        # Extract Landmark subsets
-        left_eye = landmarks[self.face_detector.LEFT_EYE]
-        right_eye = landmarks[self.face_detector.RIGHT_EYE]
-        mouth = landmarks[self.face_detector.MOUTH_INNER]
+        # Extract Landmark subsets directly from detection
+        left_eye = detection["left_eye"]
+        right_eye = detection["right_eye"]
+        mouth = detection["mouth"]
 
         # 1. Drowsiness & EAR
         drowsy_info = self.drowsiness_detector.update(left_eye, right_eye)

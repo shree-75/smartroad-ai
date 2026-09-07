@@ -11,6 +11,7 @@ class IoTTelemetry(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     device_id = Column(String, default="ESP32-001", index=True)
+    esp32_ip = Column(String, nullable=True)
     session_id = Column(String, nullable=True, index=True)
     timestamp = Column(DateTime, default=datetime.utcnow)
 
@@ -36,6 +37,7 @@ class IoTTelemetry(Base):
         return {
             "id": self.id,
             "device_id": self.device_id,
+            "esp32_ip": self.esp32_ip,
             "session_id": self.session_id,
             "timestamp": self.timestamp.isoformat() if self.timestamp else None,
             "heart_rate": self.heart_rate,

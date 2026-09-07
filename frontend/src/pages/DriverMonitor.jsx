@@ -258,16 +258,21 @@ export const DriverMonitor = () => {
             {renderCameraBadge()}
           </div>
 
-          <div style={{ position: 'relative', width: '100%', height: '320px', backgroundColor: '#000', borderRadius: '0.75rem', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(6,182,212,0.2)' }}>
-            <video ref={videoRef} autoPlay playsInline muted style={{ display: 'none' }} />
-            <canvas ref={canvasRef} width={640} height={480} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          <div style={{ position: 'relative', width: '100%', minHeight: '400px', backgroundColor: '#000', borderRadius: '0.75rem', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(6,182,212,0.3)', boxShadow: '0 0 30px rgba(6,182,212,0.15)' }}>
+            <img 
+              src="http://localhost:8000/api/v1/vision/stream" 
+              alt="Live AI Face Tracking Feed" 
+              style={{ width: '100%', maxHeight: '480px', objectFit: 'contain', display: 'block' }}
+              onError={(e) => {
+                e.target.style.display = 'none';
+              }}
+            />
 
-            {/* HUD Overlay */}
-            <div style={{ position: 'absolute', top: '15px', left: '15px', color: '#06b6d4', fontSize: '0.75rem', fontFamily: 'monospace' }}>
-              [STATUS: {currentStatus.toUpperCase()}]<br />
-              [EAR: 0.292]<br />
-              [MAR: 0.185]<br />
-              [SEATBELT: DETECTED (85% Conf)]
+            {/* Direct Backend Link Banner */}
+            <div style={{ position: 'absolute', bottom: '12px', right: '15px', background: 'rgba(0,0,0,0.7)', padding: '4px 10px', borderRadius: '6px', fontSize: '0.75rem', border: '1px solid rgba(255,255,255,0.1)' }}>
+              <a href="http://localhost:8000/api/v1/vision/view" target="_blank" rel="noreferrer" style={{ color: '#06b6d4', textDecoration: 'none' }}>
+                Open Standalone Stream ↗
+              </a>
             </div>
           </div>
         </div>

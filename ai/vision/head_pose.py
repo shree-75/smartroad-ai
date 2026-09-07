@@ -24,13 +24,26 @@ class HeadPoseEstimator:
 
     def update(self, landmarks, image_size):
         w, h = image_size
+
+        # landmarks is now a dict: {left_eye, right_eye, mouth}
+        # Derive the 6 PnP anchor points from the eye/mouth arrays
+        le  = landmarks["left_eye"]   # shape (6,2)
+        re  = landmarks["right_eye"]  # shape (6,2)
+        mo  = landmarks["mouth"]      # shape (4,2)
+
+        # Nose tip  ≈ midpoint between eyes, shifted down
+        nose_tip   = ((le[0] + re[3]) / 2 + np.array([0, int((le[0][1] + re[3][1]) / 2 * 0.15)]))
+        # Chin      ≈ below mouth bottom
+        chin       = mo[3] + np.array([0, abs(mo[3][1] - mo[0][1]) * 0.6])
+        # Left eye corner, right eye corner
+        left_eye_c  = le[0]
+        right_eye_c = re[3]
+        # Mouth corners
+        mouth_l    = mo[0]
+        mouth_r    = mo[2]
+
         image_points = np.array([
-            landmarks[1],
-            landmarks[152],
-            landmarks[33],
-            landmarks[263],
-            landmarks[61],
-            landmarks[291]
+            nose_tip, chin, left_eye_c, right_eye_c, mouth_l, mouth_r
         ], dtype="double")
 
         focal_length = w

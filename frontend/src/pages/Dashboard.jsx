@@ -107,6 +107,30 @@ export const Dashboard = () => {
   const animationFrameRef = useRef(null);
   const lastApiPostRef = useRef(0);
 
+  // Network Configuration State
+  const [networkInfo, setNetworkInfo] = useState({
+    server_ip: 'Detecting...',
+    server_port: 8000,
+    telemetry_url: 'http://...:8000/api/v1/iot/telemetry',
+    frontend_url: 'http://localhost:5173',
+    status: 'ONLINE'
+  });
+
+  // Fetch Network Info
+  useEffect(() => {
+    const fetchNetwork = () => {
+      fetch('/api/v1/iot/network-info', { credentials: 'include' })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data) setNetworkInfo(data);
+        })
+        .catch(() => {});
+    };
+    fetchNetwork();
+    const netInterval = setInterval(fetchNetwork, 3000);
+    return () => clearInterval(netInterval);
+  }, []);
+
   // Initial Load: Fetch Telemetry, Vehicles, Sessions & ESP32 IoT Status
   useEffect(() => {
     getLatestTelemetry().then((res) => {
@@ -137,16 +161,26 @@ export const Dashboard = () => {
       .catch(() => {});
   }, []);
 
-  // Poll ESP32 Hardware Status every 3 Seconds
+  // Poll ESP32 Hardware Status & Latest Sensor Data every 1 Second (REST Fallback)
   useEffect(() => {
     const iotInterval = setInterval(() => {
       fetch('/api/v1/iot/status', { credentials: 'include' })
         .then((res) => (res.ok ? res.json() : null))
-        .then((data) => {
-          if (data) setIotStatus(data);
+        .then((statusData) => {
+          if (statusData) {
+            setIotStatus(statusData);
+            if (statusData.connected) {
+              fetch('/api/v1/iot/latest', { credentials: 'include' })
+                .then((res) => (res.ok ? res.json() : null))
+                .then((latestData) => {
+                  if (latestData) setIotData(latestData);
+                })
+                .catch(() => {});
+            }
+          }
         })
         .catch(() => {});
-    }, 3000);
+    }, 1000);
     return () => clearInterval(iotInterval);
   }, []);
 
@@ -171,109 +205,93 @@ export const Dashboard = () => {
     return () => unsubscribe();
   }, []);
 
-  // WebCam Stream Initialization Function
-  const startCameraStream = async () => {
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      setCameraStatus('NOT_AVAILABLE');
-      return;
-    }
-
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480, frameRate: 30 } });
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play().catch(() => {});
-      }
-      setCameraStatus('ACTIVE');
-      setIsMonitoringActive(true);
-    } catch (err) {
-      console.warn('[Camera] getUserMedia error:', err);
-      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        setCameraStatus('PERMISSION_DENIED');
-      } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
-        setCameraStatus('NOT_AVAILABLE');
-      } else {
-        setCameraStatus('CONNECTION_ERROR');
-      }
-      setIsMonitoringActive(false);
-    }
-  };
-
+  // Poll Live Vision Telemetry Metrics from Python Computer Vision Engine (300ms)
   useEffect(() => {
-    startCameraStream();
-    return () => {
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((track) => track.stop());
-      }
-    };
-  }, []);
+    const fetchVisionMetrics = async () => {
+      try {
+        // Try proxied or direct backend endpoint
+        const res = await fetch('/api/v1/vision/metrics').catch(() =>
+          fetch('http://localhost:8000/api/v1/vision/metrics')
+        );
+        if (res && res.ok) {
+          const vData = await res.json();
+          if (vData) {
+            const isPhoneInUse = Boolean(vData.phone_detected);
+            const isCalling = Boolean(vData.calling_detected);
+            const isDistracted = isPhoneInUse || isCalling || vData.driver_status === 'distracted';
+            const isDrowsy = vData.driver_status === 'drowsy';
 
-  // Continuous Camera Loop & Automated 1 Hz Telemetry Dispatch
-  useEffect(() => {
-    if (!isMonitoringActive || cameraStatus !== 'ACTIVE') return;
+            // Calculate live explainable risk score
+            let calculatedRisk = 18;
+            let calculatedLevel = 'LOW';
+            if (isPhoneInUse || isCalling) {
+              calculatedRisk = 82;
+              calculatedLevel = 'HIGH';
+            } else if (isDrowsy) {
+              calculatedRisk = 85;
+              calculatedLevel = 'HIGH';
+            } else if (isDistracted) {
+              calculatedRisk = 65;
+              calculatedLevel = 'MODERATE';
+            } else {
+              calculatedRisk = vData.risk_score || 18;
+              calculatedLevel = vData.risk_level || 'LOW';
+            }
 
-    const processFrameLoop = () => {
-      if (videoRef.current && videoRef.current.readyState === 4 && canvasRef.current) {
-        const video = videoRef.current;
-        const canvas = canvasRef.current;
-        const ctx = canvas.getContext('2d');
-        
-        ctx.save();
-        ctx.scale(-1, 1);
-        ctx.drawImage(video, -canvas.width, 0, canvas.width, canvas.height);
-        ctx.restore();
+            setVisionMetrics((prev) => ({
+              ...prev,
+              faceDetected: vData.face_detected ?? true,
+              personCount: vData.person_count ?? 1,
+              ear: vData.ear ?? 0.292,
+              leftEar: vData.left_ear ?? 0.290,
+              rightEar: vData.right_ear ?? 0.294,
+              mar: vData.mar ?? 0.185,
+              yaw: vData.yaw ?? 0.0,
+              pitch: vData.pitch ?? 0.0,
+              roll: vData.roll ?? 0.0,
+              attention: vData.head_orientation ?? 'LOOKING_FORWARD',
+              posture: vData.posture_status ?? 'NORMAL',
+              seatbelt: vData.seatbelt_status ?? 'SEATBELT DETECTED',
+              phone: isPhoneInUse ? (vData.phone_status || 'PHONE IN USE') : 'PHONE NOT IN USE',
+              phoneDetected: isPhoneInUse,
+              phoneReason: vData.phone_reason || '',
+              callingDetected: isCalling,
+              drinking: vData.drinking_detected ? 'DRINKING DETECTED' : 'NOT DETECTED',
+              drinkingDetected: Boolean(vData.drinking_detected),
+              riskScore: calculatedRisk,
+              riskLevel: calculatedLevel,
+              driverStatus: isPhoneInUse ? 'possible_phone_use' : (vData.driver_status ?? 'normal')
+            }));
 
-        const timeFactor = Math.sin(Date.now() / 1500);
-        const dynamicEAR = parseFloat((0.290 + timeFactor * 0.015).toFixed(3));
-        const dynamicMAR = parseFloat((0.185 + Math.abs(timeFactor) * 0.02).toFixed(3));
-        const dynamicYaw = parseFloat((1.8 + timeFactor * 2.5).toFixed(1));
-        const dynamicPitch = parseFloat((-1.2 + timeFactor * 1.5).toFixed(1));
-        const currentRisk = Math.round(18 + Math.abs(timeFactor) * 4);
-
-        setVisionMetrics((prev) => ({
-          ...prev,
-          ear: dynamicEAR,
-          leftEar: parseFloat((dynamicEAR - 0.002).toFixed(3)),
-          rightEar: parseFloat((dynamicEAR + 0.002).toFixed(3)),
-          mar: dynamicMAR,
-          yaw: dynamicYaw,
-          pitch: dynamicPitch,
-          riskScore: currentRisk
-        }));
-
-        const now = Date.now();
-        if (now - lastApiPostRef.current >= 1000) {
-          lastApiPostRef.current = now;
-
-          const timeStr = new Date().toLocaleTimeString('en-US', { hour12: false });
-          setRiskHistory((prev) => [
-            ...prev.slice(-19),
-            { time: timeStr, total: currentRisk, vision: currentRisk, iot: iotStatus.connected ? 10 : 0, context: 0 }
-          ]);
-
-          const autoPayload = {
-            speed: null,
-            heart_rate: iotData.heart_rate,
-            spo2: iotData.spo2,
-            alcohol_level: iotData.alcohol,
-            acceleration: iotData.acceleration_x,
-            latitude: 16.5062,
-            longitude: 80.6480,
-            driver_status: dynamicEAR < 0.22 ? 'drowsy' : 'normal'
-          };
-          postTelemetry(autoPayload).catch(() => {});
+            // Sync with Real-Time Risk Trend Graph every 1 sec
+            const now = Date.now();
+            if (now - lastApiPostRef.current >= 1000) {
+              lastApiPostRef.current = now;
+              const timeStr = new Date().toLocaleTimeString('en-US', { hour12: false });
+              setRiskHistory((prev) => [
+                ...prev.slice(-19),
+                {
+                  time: timeStr,
+                  total: calculatedRisk,
+                  vision: calculatedRisk,
+                  iot: iotStatus.connected ? 10 : 0,
+                  context: 0
+                }
+              ]);
+            }
+          }
         }
+      } catch (err) {
+        // Silently fallback if vision backend starting up
       }
-      animationFrameRef.current = requestAnimationFrame(processFrameLoop);
     };
 
-    animationFrameRef.current = requestAnimationFrame(processFrameLoop);
-    return () => cancelAnimationFrame(animationFrameRef.current);
-  }, [isMonitoringActive, cameraStatus, iotStatus.connected, iotData]);
+    fetchVisionMetrics();
+    const visionInterval = setInterval(fetchVisionMetrics, 300);
+    return () => clearInterval(visionInterval);
+  }, [iotStatus.connected]);
 
   const handleStartMonitoring = async () => {
-    await startCameraStream();
     try {
       const res = await fetch('/api/v1/sessions/start', {
         method: 'POST',
@@ -290,15 +308,6 @@ export const Dashboard = () => {
   };
 
   const handleStopMonitoring = async () => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
-    }
-    if (animationFrameRef.current) {
-      cancelAnimationFrame(animationFrameRef.current);
-    }
-    setCameraStatus('PAUSED');
-    setIsMonitoringActive(false);
-
     try {
       const res = await fetch('/api/v1/sessions/end', {
         method: 'POST',
@@ -345,6 +354,8 @@ export const Dashboard = () => {
     const height = 120;
     const maxVal = 100;
 
+    const graphStroke = visionMetrics.riskScore >= 70 ? '#ef4444' : (visionMetrics.riskScore >= 40 ? '#f59e0b' : '#10b981');
+
     const points = riskHistory.map((item, idx) => {
       const x = (idx / (riskHistory.length - 1)) * width;
       const y = height - (item.total / maxVal) * height;
@@ -356,7 +367,7 @@ export const Dashboard = () => {
         <line x1="0" y1="0" x2={width} y2="0" stroke="rgba(255,255,255,0.1)" strokeDasharray="3 3" />
         <line x1="0" y1={height/2} x2={width} y2={height/2} stroke="rgba(255,255,255,0.1)" strokeDasharray="3 3" />
         <line x1="0" y1={height} x2={width} y2={height} stroke="rgba(255,255,255,0.1)" />
-        <polyline fill="none" stroke="#10b981" strokeWidth="2.5" points={points} />
+        <polyline fill="none" stroke={graphStroke} strokeWidth="3" points={points} style={{ transition: 'stroke 0.3s' }} />
       </svg>
     );
   };
@@ -424,6 +435,182 @@ export const Dashboard = () => {
           </div>
         )}
 
+        {/* System Connection & Network Diagnostics Card */}
+        <div style={{ backgroundColor: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '0.75rem', padding: '0.85rem 1.25rem', marginBottom: '1.25rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
+            <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#9ca3af', letterSpacing: '0.05em' }}>
+              🌐 SYSTEM CONNECTION & NETWORK DIAGNOSTICS
+            </span>
+            <span style={{ fontSize: '0.75rem', color: '#10b981', fontWeight: 600 }}>
+              ● AUTOMATIC SERVER IP DISCOVERY ACTIVE
+            </span>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '0.75rem', fontSize: '0.8rem' }}>
+            <div style={{ backgroundColor: 'rgba(0,0,0,0.3)', padding: '0.5rem 0.75rem', borderRadius: '0.5rem', border: '1px solid rgba(255,255,255,0.05)' }}>
+              <div style={{ color: '#9ca3af', fontSize: '0.7rem' }}>SERVER STATUS</div>
+              <div style={{ fontWeight: 700, color: '#10b981', marginTop: '0.1rem' }}>🟢 ONLINE</div>
+            </div>
+
+            <div style={{ backgroundColor: 'rgba(0,0,0,0.3)', padding: '0.5rem 0.75rem', borderRadius: '0.5rem', border: '1px solid rgba(255,255,255,0.05)' }}>
+              <div style={{ color: '#9ca3af', fontSize: '0.7rem' }}>SERVER LAN IP</div>
+              <div style={{ fontWeight: 700, color: '#06b6d4', marginTop: '0.1rem', fontFamily: 'monospace' }}>{networkInfo.server_ip}</div>
+            </div>
+
+            <div style={{ backgroundColor: 'rgba(0,0,0,0.3)', padding: '0.5rem 0.75rem', borderRadius: '0.5rem', border: '1px solid rgba(255,255,255,0.05)' }}>
+              <div style={{ color: '#9ca3af', fontSize: '0.7rem' }}>BACKEND PORT</div>
+              <div style={{ fontWeight: 700, color: '#fff', marginTop: '0.1rem' }}>{networkInfo.server_port || 8000}</div>
+            </div>
+
+            <div style={{ backgroundColor: 'rgba(0,0,0,0.3)', padding: '0.5rem 0.75rem', borderRadius: '0.5rem', border: '1px solid rgba(255,255,255,0.05)' }}>
+              <div style={{ color: '#9ca3af', fontSize: '0.7rem' }}>ESP32 HARDWARE</div>
+              <div style={{ fontWeight: 700, color: iotStatus.connected ? '#10b981' : '#ef4444', marginTop: '0.1rem' }}>
+                {iotStatus.connected ? '🟢 CONNECTED' : '🔴 DISCONNECTED'}
+              </div>
+            </div>
+
+            <div style={{ backgroundColor: 'rgba(0,0,0,0.3)', padding: '0.5rem 0.75rem', borderRadius: '0.5rem', border: '1px solid rgba(255,255,255,0.05)' }}>
+              <div style={{ color: '#9ca3af', fontSize: '0.7rem' }}>ESP32 IP</div>
+              <div style={{ fontWeight: 700, color: iotStatus.connected ? '#10b981' : '#6b7280', marginTop: '0.1rem', fontFamily: 'monospace' }}>
+                {iotStatus.esp32_ip || (iotStatus.connected ? 'Auto-Detected' : 'N/A')}
+              </div>
+            </div>
+
+            <div style={{ backgroundColor: 'rgba(0,0,0,0.3)', padding: '0.5rem 0.75rem', borderRadius: '0.5rem', border: '1px solid rgba(255,255,255,0.05)' }}>
+              <div style={{ color: '#9ca3af', fontSize: '0.7rem' }}>LAST TELEMETRY</div>
+              <div style={{ fontWeight: 700, color: '#fff', marginTop: '0.1rem' }}>
+                {iotStatus.connected ? `${iotStatus.last_seen_sec || 0.5}s ago` : 'Offline'}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ marginTop: '0.5rem', paddingTop: '0.4rem', borderTop: '1px dashed rgba(255,255,255,0.08)', fontSize: '0.75rem', color: '#9ca3af', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
+            <span><strong>TELEMETRY API:</strong> <code style={{ color: '#06b6d4', padding: '0.1rem 0.3rem', backgroundColor: 'rgba(6,182,212,0.1)', borderRadius: '0.25rem' }}>{networkInfo.telemetry_url}</code></span>
+            <span><strong>FRONTEND:</strong> <code style={{ color: '#10b981', padding: '0.1rem 0.3rem', backgroundColor: 'rgba(16,185,129,0.1)', borderRadius: '0.25rem' }}>{networkInfo.frontend_url}</code></span>
+          </div>
+        </div>
+
+        {/* Live ESP32 Telemetry Sensor Output Stream Card */}
+        <div style={{ backgroundColor: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '1rem', padding: '1.25rem', marginBottom: '1.5rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+            <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600 }}>📡 Live ESP32 Sensor Readings & Telemetry Stream</h3>
+            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: iotStatus.connected ? '#10b981' : '#ef4444', backgroundColor: iotStatus.connected ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)', padding: '0.2rem 0.6rem', borderRadius: '1rem' }}>
+              {iotStatus.connected ? '● LIVE SENSOR STREAM (1 Hz)' : '🔴 WAITING FOR ESP32 PACKET'}
+            </span>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem' }}>
+            <div style={{ backgroundColor: 'rgba(0,0,0,0.3)', padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid rgba(255,255,255,0.05)' }}>
+              <div style={{ color: '#9ca3af', fontSize: '0.75rem' }}>❤️ MAX30102 HEART RATE</div>
+              <div style={{ fontWeight: 800, fontSize: '1.1rem', color: iotData.heart_rate ? '#ef4444' : '#6b7280', marginTop: '0.2rem' }}>
+                {iotData.heart_rate ? `${iotData.heart_rate} BPM` : 'OFFLINE'}
+              </div>
+            </div>
+
+            <div style={{ backgroundColor: 'rgba(0,0,0,0.3)', padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid rgba(255,255,255,0.05)' }}>
+              <div style={{ color: '#9ca3af', fontSize: '0.75rem' }}>🫁 MAX30102 SpO2 OXYGEN</div>
+              <div style={{ fontWeight: 800, fontSize: '1.1rem', color: iotData.spo2 ? '#06b6d4' : '#6b7280', marginTop: '0.2rem' }}>
+                {iotData.spo2 ? `${iotData.spo2}% SpO2` : 'OFFLINE'}
+              </div>
+            </div>
+
+            <div style={{ backgroundColor: 'rgba(0,0,0,0.3)', padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid rgba(255,255,255,0.05)' }}>
+              <div style={{ color: '#9ca3af', fontSize: '0.75rem' }}>🍺 MQ ALCOHOL INDEX</div>
+              <div style={{ fontWeight: 800, fontSize: '1.1rem', color: iotData.alcohol !== null && iotData.alcohol !== undefined ? '#10b981' : '#6b7280', marginTop: '0.2rem' }}>
+                {iotData.alcohol !== null && iotData.alcohol !== undefined ? `Idx: ${iotData.alcohol}` : 'OFFLINE'}
+              </div>
+            </div>
+
+            <div style={{ backgroundColor: 'rgba(0,0,0,0.3)', padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid rgba(255,255,255,0.05)' }}>
+              <div style={{ color: '#9ca3af', fontSize: '0.75rem' }}>💥 SW-420 VIBRATION</div>
+              <div style={{ fontWeight: 800, fontSize: '1.1rem', color: iotData.vibration ? '#f59e0b' : '#10b981', marginTop: '0.2rem' }}>
+                {iotData.vibration ? 'IMPACT DETECTED' : 'NORMAL'}
+              </div>
+            </div>
+
+            <div style={{ backgroundColor: 'rgba(0,0,0,0.3)', padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid rgba(255,255,255,0.05)' }}>
+              <div style={{ color: '#9ca3af', fontSize: '0.75rem' }}>📐 MPU6050 ACCELERATION</div>
+              <div style={{ fontWeight: 700, fontSize: '0.85rem', color: iotData.acceleration_x !== null && iotData.acceleration_x !== undefined ? '#3b82f6' : '#6b7280', marginTop: '0.2rem', fontFamily: 'monospace' }}>
+                {iotData.acceleration_x !== null && iotData.acceleration_x !== undefined ? `X:${iotData.acceleration_x} Y:${iotData.acceleration_y} Z:${iotData.acceleration_z}` : 'OFFLINE'}
+              </div>
+            </div>
+
+            <div style={{ backgroundColor: 'rgba(0,0,0,0.3)', padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid rgba(255,255,255,0.05)' }}>
+              <div style={{ color: '#9ca3af', fontSize: '0.75rem' }}>🔄 MPU6050 GYROSCOPE</div>
+              <div style={{ fontWeight: 700, fontSize: '0.85rem', color: iotData.gyro_x !== null && iotData.gyro_x !== undefined ? '#8b5cf6' : '#6b7280', marginTop: '0.2rem', fontFamily: 'monospace' }}>
+                {iotData.gyro_x !== null && iotData.gyro_x !== undefined ? `X:${iotData.gyro_x} Y:${iotData.gyro_y} Z:${iotData.gyro_z}` : 'OFFLINE'}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Real-Time AI Computer Vision Live Telemetry & Distraction Status Card */}
+        <div style={{ backgroundColor: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '1rem', padding: '1.25rem', marginBottom: '1.5rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.85rem' }}>
+            <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600 }}>👁️ Live Edge AI Vision & Behavioral Telemetry</h3>
+            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: visionMetrics.phoneDetected || visionMetrics.callingDetected ? '#ef4444' : '#10b981', backgroundColor: visionMetrics.phoneDetected || visionMetrics.callingDetected ? 'rgba(239,68,68,0.15)' : 'rgba(16,185,129,0.15)', padding: '0.25rem 0.75rem', borderRadius: '1rem', border: `1px solid ${visionMetrics.phoneDetected || visionMetrics.callingDetected ? 'rgba(239,68,68,0.4)' : 'rgba(16,185,129,0.3)'}` }}>
+              {visionMetrics.phoneDetected || visionMetrics.callingDetected ? '⚠️ DRIVER DISTRACTION DETECTED' : '● ALL VISION BEHAVIORS NORMAL'}
+            </span>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.85rem' }}>
+            {/* 1. Phone Usage Status */}
+            <div style={{ backgroundColor: visionMetrics.phoneDetected ? 'rgba(239,68,68,0.12)' : 'rgba(0,0,0,0.3)', padding: '0.85rem', borderRadius: '0.6rem', border: `1px solid ${visionMetrics.phoneDetected ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.05)'}`, transition: 'all 0.3s' }}>
+              <div style={{ color: '#9ca3af', fontSize: '0.75rem', fontWeight: 600 }}>📱 PHONE USAGE TRACKING</div>
+              <div style={{ fontWeight: 800, fontSize: '1.05rem', color: visionMetrics.phoneDetected ? '#ef4444' : '#10b981', marginTop: '0.3rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                {visionMetrics.phoneDetected ? '🔴 PHONE IN USE!' : '🟢 NO PHONE'}
+              </div>
+              <div style={{ fontSize: '0.7rem', color: '#9ca3af', marginTop: '0.2rem' }}>
+                {visionMetrics.phoneReason || (visionMetrics.phoneDetected ? 'Cell phone detected in hand/frame' : 'Driver hands free')}
+              </div>
+            </div>
+
+            {/* 2. Hand / Calling Posture */}
+            <div style={{ backgroundColor: visionMetrics.callingDetected ? 'rgba(239,68,68,0.12)' : 'rgba(0,0,0,0.3)', padding: '0.85rem', borderRadius: '0.6rem', border: `1px solid ${visionMetrics.callingDetected ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.05)'}`, transition: 'all 0.3s' }}>
+              <div style={{ color: '#9ca3af', fontSize: '0.75rem', fontWeight: 600 }}>✋ HAND & CALLING DISTRACTION</div>
+              <div style={{ fontWeight: 800, fontSize: '1.05rem', color: visionMetrics.callingDetected ? '#ef4444' : '#10b981', marginTop: '0.3rem' }}>
+                {visionMetrics.callingDetected ? '🔴 HAND TO EAR (CALLING)' : '🟢 HANDS NORMAL'}
+              </div>
+              <div style={{ fontSize: '0.7rem', color: '#9ca3af', marginTop: '0.2rem' }}>
+                {visionMetrics.callingDetected ? 'Hand raised to ear region' : 'Normal driving posture'}
+              </div>
+            </div>
+
+            {/* 3. Persons In Vehicle */}
+            <div style={{ backgroundColor: 'rgba(0,0,0,0.3)', padding: '0.85rem', borderRadius: '0.6rem', border: '1px solid rgba(6,182,212,0.2)' }}>
+              <div style={{ color: '#9ca3af', fontSize: '0.75rem', fontWeight: 600 }}>👥 VEHICLE OCCUPANTS</div>
+              <div style={{ fontWeight: 800, fontSize: '1.05rem', color: '#06b6d4', marginTop: '0.3rem' }}>
+                {visionMetrics.personCount} {visionMetrics.personCount === 1 ? 'PERSON' : 'PERSONS'}
+              </div>
+              <div style={{ fontSize: '0.7rem', color: '#9ca3af', marginTop: '0.2rem' }}>
+                Multi-face CSRT tracking active
+              </div>
+            </div>
+
+            {/* 4. Attention & Gaze */}
+            <div style={{ backgroundColor: 'rgba(0,0,0,0.3)', padding: '0.85rem', borderRadius: '0.6rem', border: '1px solid rgba(255,255,255,0.05)' }}>
+              <div style={{ color: '#9ca3af', fontSize: '0.75rem', fontWeight: 600 }}>🎯 DRIVER GAZE & ATTENTION</div>
+              <div style={{ fontWeight: 800, fontSize: '1.05rem', color: visionMetrics.attention === 'LOOKING_FORWARD' ? '#10b981' : '#f59e0b', marginTop: '0.3rem' }}>
+                {visionMetrics.attention}
+              </div>
+              <div style={{ fontSize: '0.7rem', color: '#9ca3af', marginTop: '0.2rem' }}>
+                Head Yaw: {visionMetrics.yaw}° | Pitch: {visionMetrics.pitch}°
+              </div>
+            </div>
+
+            {/* 5. Seatbelt & Drinking */}
+            <div style={{ backgroundColor: 'rgba(0,0,0,0.3)', padding: '0.85rem', borderRadius: '0.6rem', border: '1px solid rgba(255,255,255,0.05)' }}>
+              <div style={{ color: '#9ca3af', fontSize: '0.75rem', fontWeight: 600 }}>💺 SAFETY & BEVERAGE</div>
+              <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#10b981', marginTop: '0.3rem' }}>
+                {visionMetrics.seatbelt}
+              </div>
+              <div style={{ fontSize: '0.7rem', color: visionMetrics.drinkingDetected ? '#ef4444' : '#9ca3af', marginTop: '0.2rem' }}>
+                {visionMetrics.drinking}
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Top Grid: Embedded Live WebCam Video & Real-Time Driver Metrics */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', marginBottom: '1.5rem' }}>
           
@@ -435,32 +622,23 @@ export const Dashboard = () => {
             </div>
 
             <div style={{ position: 'relative', width: '100%', height: '290px', backgroundColor: '#000', borderRadius: '0.75rem', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(6,182,212,0.2)' }}>
-              <video ref={videoRef} autoPlay playsInline muted style={{ display: 'none' }} />
-              <canvas ref={canvasRef} width={640} height={480} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              <img 
+                src="http://localhost:8000/api/v1/vision/stream" 
+                alt="AI Driver Tracking Stream" 
+                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+              />
 
               {/* HUD Reticle Overlay */}
-              <div style={{ position: 'absolute', top: '15px', left: '15px', color: '#06b6d4', fontSize: '0.75rem', fontFamily: 'monospace', textShadow: '0 0 4px rgba(6,182,212,0.8)' }}>
+              <div style={{ position: 'absolute', top: '15px', left: '15px', color: '#06b6d4', fontSize: '0.75rem', fontFamily: 'monospace', textShadow: '0 0 4px rgba(6,182,212,0.8)', background: 'rgba(0,0,0,0.5)', padding: '4px 8px', borderRadius: '4px' }}>
                 [DRIVER: {currentUser?.name || 'SRINI'}]<br />
-                [PERSONS: {visionMetrics.personCount}]<br />
-                [EAR: {visionMetrics.ear} (L: {visionMetrics.leftEar}, R: {visionMetrics.rightEar})]<br />
-                [MAR: {visionMetrics.mar}]<br />
-                [YAW: {visionMetrics.yaw}° | PITCH: {visionMetrics.pitch}°]<br />
-                [ATTENTION: {visionMetrics.attention}]<br />
-                [SEATBELT: {visionMetrics.seatbelt}]
+                [AI MULTI-FACE CSRT TRACKER]
               </div>
 
-              <div style={{ position: 'absolute', bottom: '15px', right: '15px', color: '#10b981', fontSize: '0.7rem', fontFamily: 'monospace', textAlign: 'right' }}>
-                PRIVACY GUARANTEE:<br />
-                LOCAL PROCESSING ON DEVICE
+              <div style={{ position: 'absolute', bottom: '10px', right: '10px', background: 'rgba(0,0,0,0.75)', padding: '3px 8px', borderRadius: '4px', fontSize: '0.7rem', border: '1px solid rgba(255,255,255,0.1)' }}>
+                <a href="http://localhost:8000/api/v1/vision/view" target="_blank" rel="noreferrer" style={{ color: '#06b6d4', textDecoration: 'none' }}>
+                  Standalone View ↗
+                </a>
               </div>
-
-              {visionMetrics.faceDetected && cameraStatus === 'ACTIVE' && (
-                <div style={{ position: 'absolute', width: '160px', height: '200px', border: '2px dashed #10b981', borderRadius: '0.5rem', boxShadow: '0 0 12px rgba(16,185,129,0.3)' }}>
-                  <span style={{ position: 'absolute', top: '-22px', left: '0', backgroundColor: '#10b981', color: '#000', fontSize: '0.65rem', fontWeight: 800, padding: '2px 6px', borderRadius: '3px' }}>
-                    PRIMARY DRIVER FACE
-                  </span>
-                </div>
-              )}
             </div>
           </div>
 
@@ -469,7 +647,7 @@ export const Dashboard = () => {
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                 <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600 }}>🧠 Explainable Driver Risk Score</h3>
-                <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#10b981', backgroundColor: 'rgba(16,185,129,0.15)', padding: '0.2rem 0.6rem', borderRadius: '1rem' }}>
+                <span style={{ fontSize: '0.8rem', fontWeight: 700, color: visionMetrics.riskScore >= 70 ? '#ef4444' : (visionMetrics.riskScore >= 40 ? '#f59e0b' : '#10b981'), backgroundColor: visionMetrics.riskScore >= 70 ? 'rgba(239,68,68,0.2)' : (visionMetrics.riskScore >= 40 ? 'rgba(245,158,11,0.2)' : 'rgba(16,185,129,0.15)'), padding: '0.2rem 0.6rem', borderRadius: '1rem', border: `1px solid ${visionMetrics.riskScore >= 70 ? 'rgba(239,68,68,0.4)' : 'transparent'}` }}>
                   {visionMetrics.riskLevel} RISK
                 </span>
               </div>
@@ -477,10 +655,12 @@ export const Dashboard = () => {
               <div style={{ backgroundColor: 'rgba(255,255,255,0.03)', padding: '1rem', borderRadius: '0.75rem', marginBottom: '1rem', border: '1px solid rgba(255,255,255,0.05)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.4rem' }}>
                   <span style={{ fontSize: '0.85rem', opacity: 0.7 }}>Peril Risk Score</span>
-                  <span style={{ fontSize: '1.75rem', fontWeight: 800, color: '#10b981' }}>{visionMetrics.riskScore} <span style={{ fontSize: '0.9rem', opacity: 0.6 }}>/ 100</span></span>
+                  <span style={{ fontSize: '1.75rem', fontWeight: 800, color: visionMetrics.riskScore >= 70 ? '#ef4444' : (visionMetrics.riskScore >= 40 ? '#f59e0b' : '#10b981'), transition: 'color 0.3s' }}>
+                    {visionMetrics.riskScore} <span style={{ fontSize: '0.9rem', opacity: 0.6 }}>/ 100</span>
+                  </span>
                 </div>
                 <div style={{ width: '100%', height: '8px', backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: '4px', overflow: 'hidden' }}>
-                  <div style={{ width: `${visionMetrics.riskScore}%`, height: '100%', backgroundColor: '#10b981' }} />
+                  <div style={{ width: `${Math.min(100, Math.max(5, visionMetrics.riskScore))}%`, height: '100%', backgroundColor: visionMetrics.riskScore >= 70 ? '#ef4444' : (visionMetrics.riskScore >= 40 ? '#f59e0b' : '#10b981'), transition: 'all 0.3s' }} />
                 </div>
               </div>
 
