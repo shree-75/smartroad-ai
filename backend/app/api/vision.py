@@ -15,6 +15,8 @@ from app.services.twilio_service import make_emergency_call, send_emergency_sms
 
 router = APIRouter(prefix="/vision", tags=["Vision Streaming"])
 
+TARGET_USER_PHONE = "+919704638232"
+
 # ─────────────────────────────────────────────────────────────
 # Singleton camera engine — shared across all browser clients
 # ─────────────────────────────────────────────────────────────
@@ -26,7 +28,7 @@ class _CameraEngine:
         self._running = False
         self._latest_frame: bytes = b""
         self._last_twilio_call_time = 0.0
-        self._last_twilio_status = "IDLE / READY"
+        self._last_twilio_status = f"IDLE / READY (Target: {TARGET_USER_PHONE})"
         self._latest_metrics: dict = {
             "active": False,
             "person_count": 1,
@@ -52,7 +54,7 @@ class _CameraEngine:
             "posture_status": "NORMAL",
             "risk_score": 18,
             "risk_level": "LOW",
-            "twilio_call_status": "IDLE / READY",
+            "twilio_call_status": f"IDLE / READY (Target: {TARGET_USER_PHONE})",
             "fps": 0.0
         }
         self._thread  = None
@@ -105,21 +107,21 @@ class _CameraEngine:
                 risk_score = int(s.get("score", 18))
                 risk_level = str(s.get("level", "LOW"))
 
-                # 🚨 HIGH RISK TWILIO AUTOMATED EMERGENCY DISPATCH
+                # 🚨 HIGH RISK TWILIO AUTOMATED EMERGENCY DISPATCH TO +919704638232
                 is_high_risk = risk_score >= 60 or risk_level in ["HIGH", "CRITICAL"] or phone_detected or calling_detected
                 now = time.time()
 
                 if is_high_risk and (now - self._last_twilio_call_time > 45.0):
                     self._last_twilio_call_time = now
                     reason = f"High Risk ({risk_score}/100) - {phone_status}" if phone_detected else f"High Driver Risk ({risk_score}/100)"
-                    self._last_twilio_status = f"📞 CONNECTING TWILIO CALL ({reason})"
+                    self._last_twilio_status = f"📞 DIALING {TARGET_USER_PHONE} ({reason})"
 
                     def _async_twilio_dispatch(r_text, score):
-                        call_res = make_emergency_call(alert_reason=r_text)
-                        sms_res = send_emergency_sms(f"🚨 SMARTROAD AI CRITICAL ALERT! Driver risk score is {score}/100. Event: {r_text}.")
+                        call_res = make_emergency_call(to_phone=TARGET_USER_PHONE, alert_reason=r_text)
+                        sms_res = send_emergency_sms(f"🚨 SMARTROAD AI CRITICAL ALERT! Driver risk score is {score}/100. Event: {r_text}.", recipient_phone=TARGET_USER_PHONE)
                         status_str = call_res.get("status", "DISPATCHED")
-                        msg = call_res.get("message", "Emergency Call Connect Triggered")
-                        self._last_twilio_status = f"📞 {status_str}: {msg}"
+                        msg = call_res.get("message", "Emergency Call Triggered")
+                        self._last_twilio_status = f"📞 Call to {TARGET_USER_PHONE} [{status_str}]: {msg}"
 
                     threading.Thread(target=_async_twilio_dispatch, args=(reason, risk_score), daemon=True).start()
 

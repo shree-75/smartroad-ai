@@ -9,24 +9,21 @@ from app.models.user import User
 from app.models.emergency import EmergencyAlert
 from app.schemas.emergency import EmergencyAlertCreate, EmergencyAlertStatusUpdate, EmergencyAlertResponse
 from app.api.auth import get_current_user
-from app.services.twilio_service import send_emergency_sms, make_emergency_call
+from app.services.twilio_service import send_emergency_sms, make_emergency_call, USER_DEFAULT_PHONE
 
 router = APIRouter(prefix="/emergency", tags=["Emergency Response"])
 
 class TwilioCallPayload(BaseModel):
-    recipient_phone: Optional[str] = None
+    recipient_phone: Optional[str] = USER_DEFAULT_PHONE
     reason: Optional[str] = "High driver risk detected (Risk score threshold exceeded)"
     risk_score: Optional[int] = 85
 
 class TwilioSMSPayload(BaseModel):
-    recipient_phone: Optional[str] = None
+    recipient_phone: Optional[str] = USER_DEFAULT_PHONE
     message: str = "🚨 SMARTROAD AI EMERGENCY: High risk driver event detected!"
 
 @router.get("/nearby-hospitals")
 def get_nearby_hospitals(lat: float = 16.5062, lon: float = 80.6480, radius_km: float = 15.0):
-    """
-    Computes real-time nearby hospitals, emergency trauma care units, and police centers with exact distance, ETA, and emergency phone.
-    """
     facilities = [
         {"id": 1, "name": "AIIMS Emergency & Trauma Care", "type": "HOSPITAL", "specialty": "Level 1 Trauma & ICU", "lat": lat + 0.0120, "lon": lon + 0.0090, "phone": "+91 863 2345000", "emergency_line": "108", "available_beds": 14, "blood_bank": True},
         {"id": 2, "name": "City Government General Hospital", "type": "HOSPITAL", "specialty": "24/7 Emergency & Multi-Specialty", "lat": lat - 0.0085, "lon": lon + 0.0110, "phone": "+91 866 2577777", "emergency_line": "108", "available_beds": 28, "blood_bank": True},
@@ -63,10 +60,7 @@ def get_nearby_hospitals(lat: float = 16.5062, lon: float = 80.6480, radius_km: 
 
 @router.post("/twilio/call")
 def trigger_twilio_call(payload: TwilioCallPayload):
-    """
-    Connects a live Twilio voice call alert when high risk occurs.
-    """
-    call_result = make_emergency_call(to_phone=payload.recipient_phone, alert_reason=payload.reason)
+    call_result = make_emergency_call(to_phone=payload.recipient_phone or USER_DEFAULT_PHONE, alert_reason=payload.reason)
     return {
         "status": "success",
         "action": "TWILIO_VOICE_CALL",
@@ -75,10 +69,7 @@ def trigger_twilio_call(payload: TwilioCallPayload):
 
 @router.post("/twilio/sms")
 def trigger_twilio_sms(payload: TwilioSMSPayload):
-    """
-    Dispatches a Twilio SMS emergency notification.
-    """
-    sms_result = send_emergency_sms(message_body=payload.message, recipient_phone=payload.recipient_phone)
+    sms_result = send_emergency_sms(message_body=payload.message, recipient_phone=payload.recipient_phone or USER_DEFAULT_PHONE)
     return {
         "status": "success",
         "action": "TWILIO_SMS",
@@ -87,15 +78,14 @@ def trigger_twilio_sms(payload: TwilioSMSPayload):
 
 @router.post("/dispatch-high-risk")
 def dispatch_high_risk_emergency(payload: TwilioCallPayload):
-    """
-    Full high-risk emergency responder dispatch (both Twilio Call & Twilio SMS).
-    """
+    target = payload.recipient_phone or USER_DEFAULT_PHONE
     sms_msg = f"🚨 SMARTROAD AI HIGH RISK ALERT! Driver Risk Score: {payload.risk_score}/100. Event: {payload.reason}."
-    sms_res = send_emergency_sms(message_body=sms_msg, recipient_phone=payload.recipient_phone)
-    call_res = make_emergency_call(to_phone=payload.recipient_phone, alert_reason=payload.reason)
+    sms_res = send_emergency_sms(message_body=sms_msg, recipient_phone=target)
+    call_res = make_emergency_call(to_phone=target, alert_reason=payload.reason)
     return {
         "status": "success",
         "action": "HIGH_RISK_TWILIO_DISPATCH",
+        "target_phone": target,
         "sms_result": sms_res,
         "call_result": call_res
     }
@@ -118,10 +108,6 @@ def trigger_emergency_alert(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """
-    Dispatches a critical driver risk emergency alert.
-    Persists alert in database, triggers Twilio notifications if configured, and returns created alert.
-    """
     alert = EmergencyAlert(
         driver_id=current_user.id,
         vehicle_id=payload.vehicle_id,
@@ -137,9 +123,9 @@ def trigger_emergency_alert(
     db.refresh(alert)
 
     msg = f"🚨 SMARTROAD AI EMERGENCY ALERT! Driver {current_user.name or current_user.email} triggered {payload.alert_type} (Risk: {payload.risk_score}/100) at Lat: {payload.latitude}, Lon: {payload.longitude}."
-    send_emergency_sms(msg)
-    if payload.risk_score >= 70.0:
-        make_emergency_call(alert_reason=f"High Risk Alert ({payload.risk_score}/100 - {payload.alert_type})")
+    send_emergency_sms(msg, recipient_phone=USER_DEFAULT_PHONE)
+    if payload.risk_score >= 60.0:
+        make_emergency_call(to_phone=USER_DEFAULT_PHONE, alert_reason=f"High Risk Alert ({payload.risk_score}/100 - {payload.alert_type})")
 
     return alert
 

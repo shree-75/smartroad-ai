@@ -3,23 +3,37 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+USER_DEFAULT_PHONE = "+919704638232"
+
+def format_phone_number(phone: str = None) -> str:
+    """
+    Formats phone numbers into standard E.164 international format (+919704638232).
+    Defaults to +919704638232 if unspecified.
+    """
+    if not phone:
+        return os.getenv("EMERGENCY_PHONE_NUMBER") or USER_DEFAULT_PHONE
+    phone = str(phone).strip().replace(" ", "").replace("-", "")
+    if len(phone) == 10 and phone.isdigit():
+        return f"+91{phone}"
+    if not phone.startswith("+"):
+        return f"+{phone}"
+    return phone
+
 def send_emergency_sms(message_body: str, recipient_phone: str = None) -> dict:
     """
-    Dispatches emergency SMS notification using Twilio API.
-    Reads credentials strictly from environment variables.
-    Returns status dict without crashing if Twilio is not configured.
+    Dispatches emergency SMS notification using Twilio API to target number (+919704638232).
     """
     account_sid = os.getenv("TWILIO_ACCOUNT_SID")
     auth_token = os.getenv("TWILIO_AUTH_TOKEN")
     from_phone = os.getenv("TWILIO_PHONE_NUMBER")
-    to_phone = recipient_phone or os.getenv("EMERGENCY_PHONE_NUMBER") or "+18005550199"
+    to_phone = format_phone_number(recipient_phone)
 
     if not account_sid or not auth_token or not from_phone:
         logger.info(f"[Twilio SMS] Credentials missing in environment. Mock SMS to {to_phone}: {message_body}")
         return {
             "status": "MOCK_DISPATCHED",
             "to": to_phone,
-            "message": f"Twilio credentials missing. Simulated SMS logged for {to_phone}.",
+            "message": f"Twilio credentials missing in .env. Simulated emergency SMS logged for {to_phone}.",
             "sms_body": message_body
         }
 
@@ -48,13 +62,12 @@ def send_emergency_sms(message_body: str, recipient_phone: str = None) -> dict:
 
 def make_emergency_call(to_phone: str = None, alert_reason: str = None) -> dict:
     """
-    Initiates an emergency phone call alert using Twilio Voice API.
-    Returns status dict without crashing if credentials are missing.
+    Initiates an emergency phone call alert using Twilio Voice API to target number (+919704638232).
     """
     account_sid = os.getenv("TWILIO_ACCOUNT_SID")
     auth_token = os.getenv("TWILIO_AUTH_TOKEN")
     from_phone = os.getenv("TWILIO_PHONE_NUMBER")
-    target_phone = to_phone or os.getenv("EMERGENCY_PHONE_NUMBER") or "+18005550199"
+    target_phone = format_phone_number(to_phone)
 
     reason_text = alert_reason or "high risk driver status detected"
     twiml_payload = f'<Response><Say voice="alice">Emergency Driver Alert! SmartRoad AI has detected {reason_text}. Immediate attention required for driver safety.</Say></Response>'
@@ -64,7 +77,7 @@ def make_emergency_call(to_phone: str = None, alert_reason: str = None) -> dict:
         return {
             "status": "MOCK_CALL_INITIATED",
             "to": target_phone,
-            "message": f"High Risk Twilio Call Triggered (Simulated mode to {target_phone}). Set TWILIO_ACCOUNT_SID & AUTH_TOKEN to make live calls.",
+            "message": f"High Risk Twilio Call Triggered to {target_phone} (Simulated mode). Add TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, & TWILIO_PHONE_NUMBER to backend/.env to place live phone calls to {target_phone}.",
             "reason": reason_text
         }
 
