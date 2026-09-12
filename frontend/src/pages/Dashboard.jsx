@@ -100,6 +100,10 @@ export const Dashboard = () => {
     riskLevel: 'LOW'
   });
 
+  // Twilio Call State
+  const [twilioStatus, setTwilioStatus] = useState('IDLE / READY');
+  const [twilioDispatching, setTwilioDispatching] = useState(false);
+
   // WebCam & Canvas Refs
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -263,6 +267,10 @@ export const Dashboard = () => {
               driverStatus: isPhoneInUse ? 'possible_phone_use' : (vData.driver_status ?? 'normal')
             }));
 
+            if (vData.twilio_call_status) {
+              setTwilioStatus(vData.twilio_call_status);
+            }
+
             // Sync with Real-Time Risk Trend Graph every 1 sec
             const now = Date.now();
             if (now - lastApiPostRef.current >= 1000) {
@@ -290,6 +298,26 @@ export const Dashboard = () => {
     const visionInterval = setInterval(fetchVisionMetrics, 300);
     return () => clearInterval(visionInterval);
   }, [iotStatus.connected]);
+
+  const handleTriggerTwilioCall = async () => {
+    setTwilioDispatching(true);
+    try {
+      const res = await fetch('/api/v1/emergency/twilio/call', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          reason: `High Risk Driver Event (${visionMetrics.riskScore}/100) - ${visionMetrics.phone}`,
+          risk_score: visionMetrics.riskScore
+        })
+      });
+      const data = await res.json();
+      setTwilioStatus(data?.details?.message || '📞 Twilio Emergency Call Initiated');
+    } catch (err) {
+      setTwilioStatus('⚠️ Failed to connect Twilio call');
+    } finally {
+      setTwilioDispatching(false);
+    }
+  };
 
   const handleStartMonitoring = async () => {
     try {
@@ -665,7 +693,7 @@ export const Dashboard = () => {
               </div>
 
               {/* Instant Dynamic Feature Readings */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.65rem', fontSize: '0.8rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.65rem', fontSize: '0.8rem', marginBottom: '1rem' }}>
                 <div style={{ padding: '0.5rem', backgroundColor: 'rgba(255,255,255,0.015)', borderRadius: '0.4rem' }}>
                   <span style={{ opacity: 0.6 }}>EAR:</span> <strong style={{ color: '#06b6d4' }}>{visionMetrics.ear}</strong>
                 </div>
@@ -679,10 +707,34 @@ export const Dashboard = () => {
                   <span style={{ opacity: 0.6 }}>PERCLOS:</span> <strong>{visionMetrics.perclos}%</strong>
                 </div>
               </div>
+
+              {/* 📞 Twilio Voice Call & Emergency Dispatch Card */}
+              <div style={{ padding: '0.85rem', backgroundColor: visionMetrics.riskScore >= 60 ? 'rgba(239,68,68,0.12)' : 'rgba(6,182,212,0.05)', border: `1px solid ${visionMetrics.riskScore >= 60 ? 'rgba(239,68,68,0.4)' : 'rgba(6,182,212,0.2)'}`, borderRadius: '0.65rem', transition: 'all 0.3s' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+                  <span style={{ fontSize: '0.85rem', fontWeight: 700, color: visionMetrics.riskScore >= 60 ? '#ef4444' : '#06b6d4', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    📞 Twilio Emergency Voice Call
+                  </span>
+                  <span style={{ fontSize: '0.7rem', padding: '0.15rem 0.5rem', borderRadius: '0.25rem', backgroundColor: twilioStatus.includes('CONNECTING') || twilioStatus.includes('Initiated') || twilioStatus.includes('DISPATCHED') || visionMetrics.riskScore >= 60 ? 'rgba(239,68,68,0.2)' : 'rgba(16,185,129,0.15)', color: twilioStatus.includes('CONNECTING') || twilioStatus.includes('Initiated') || twilioStatus.includes('DISPATCHED') || visionMetrics.riskScore >= 60 ? '#ef4444' : '#10b981', fontWeight: 700 }}>
+                    {visionMetrics.riskScore >= 60 ? '🚨 HIGH RISK ALERT' : 'READY'}
+                  </span>
+                </div>
+
+                <div style={{ fontSize: '0.75rem', opacity: 0.85, marginBottom: '0.6rem', color: '#cbd5e1', lineHeight: '1.3' }}>
+                  Status: <strong>{twilioStatus}</strong>
+                </div>
+
+                <button
+                  onClick={handleTriggerTwilioCall}
+                  disabled={twilioDispatching}
+                  style={{ width: '100%', padding: '0.5rem 0.75rem', backgroundColor: visionMetrics.riskScore >= 60 ? '#dc2626' : '#0284c7', color: '#ffffff', border: 'none', borderRadius: '0.4rem', fontWeight: 700, fontSize: '0.8rem', cursor: twilioDispatching ? 'not-allowed' : 'pointer', transition: 'all 0.2s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', boxShadow: visionMetrics.riskScore >= 60 ? '0 0 12px rgba(220,38,38,0.4)' : 'none' }}
+                >
+                  {twilioDispatching ? '📞 Connecting Twilio Call...' : '📞 Trigger Twilio Call Now'}
+                </button>
+              </div>
             </div>
 
             <div style={{ marginTop: '0.85rem', fontSize: '0.75rem', opacity: 0.6, fontStyle: 'italic' }}>
-              * Camera observations continuously processed locally (Edge AI Privacy Guarantee).
+              * High Risk (Score ≥ 60 or Phone Call) automatically connects emergency Twilio Voice Call & SMS.
             </div>
           </div>
 

@@ -1,7 +1,8 @@
 import math
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 
 from app.db.session import get_db
 from app.models.user import User
@@ -11,6 +12,15 @@ from app.api.auth import get_current_user
 from app.services.twilio_service import send_emergency_sms, make_emergency_call
 
 router = APIRouter(prefix="/emergency", tags=["Emergency Response"])
+
+class TwilioCallPayload(BaseModel):
+    recipient_phone: Optional[str] = None
+    reason: Optional[str] = "High driver risk detected (Risk score threshold exceeded)"
+    risk_score: Optional[int] = 85
+
+class TwilioSMSPayload(BaseModel):
+    recipient_phone: Optional[str] = None
+    message: str = "🚨 SMARTROAD AI EMERGENCY: High risk driver event detected!"
 
 @router.get("/nearby-hospitals")
 def get_nearby_hospitals(lat: float = 16.5062, lon: float = 80.6480, radius_km: float = 15.0):
@@ -51,15 +61,50 @@ def get_nearby_hospitals(lat: float = 16.5062, lon: float = 80.6480, radius_km: 
         "facilities": results
     }
 
+@router.post("/twilio/call")
+def trigger_twilio_call(payload: TwilioCallPayload):
+    """
+    Connects a live Twilio voice call alert when high risk occurs.
+    """
+    call_result = make_emergency_call(to_phone=payload.recipient_phone, alert_reason=payload.reason)
+    return {
+        "status": "success",
+        "action": "TWILIO_VOICE_CALL",
+        "details": call_result
+    }
+
+@router.post("/twilio/sms")
+def trigger_twilio_sms(payload: TwilioSMSPayload):
+    """
+    Dispatches a Twilio SMS emergency notification.
+    """
+    sms_result = send_emergency_sms(message_body=payload.message, recipient_phone=payload.recipient_phone)
+    return {
+        "status": "success",
+        "action": "TWILIO_SMS",
+        "details": sms_result
+    }
+
+@router.post("/dispatch-high-risk")
+def dispatch_high_risk_emergency(payload: TwilioCallPayload):
+    """
+    Full high-risk emergency responder dispatch (both Twilio Call & Twilio SMS).
+    """
+    sms_msg = f"🚨 SMARTROAD AI HIGH RISK ALERT! Driver Risk Score: {payload.risk_score}/100. Event: {payload.reason}."
+    sms_res = send_emergency_sms(message_body=sms_msg, recipient_phone=payload.recipient_phone)
+    call_res = make_emergency_call(to_phone=payload.recipient_phone, alert_reason=payload.reason)
+    return {
+        "status": "success",
+        "action": "HIGH_RISK_TWILIO_DISPATCH",
+        "sms_result": sms_res,
+        "call_result": call_res
+    }
+
 @router.get("/", response_model=List[EmergencyAlertResponse])
 def get_emergency_alerts(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """
-    Retrieves emergency alerts. Caretaker, Police, Hospital, and Admin roles receive all active alerts.
-    Drivers receive their personal emergency alerts.
-    """
     role = (current_user.role or "driver").lower()
     if role in ["caretaker", "hospital", "police", "admin"]:
         alerts = db.query(EmergencyAlert).order_by(EmergencyAlert.created_at.desc()).all()
@@ -93,8 +138,8 @@ def trigger_emergency_alert(
 
     msg = f"🚨 SMARTROAD AI EMERGENCY ALERT! Driver {current_user.name or current_user.email} triggered {payload.alert_type} (Risk: {payload.risk_score}/100) at Lat: {payload.latitude}, Lon: {payload.longitude}."
     send_emergency_sms(msg)
-    if payload.risk_score >= 85.0:
-        make_emergency_call()
+    if payload.risk_score >= 70.0:
+        make_emergency_call(alert_reason=f"High Risk Alert ({payload.risk_score}/100 - {payload.alert_type})")
 
     return alert
 
@@ -105,10 +150,6 @@ def update_alert_status(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """
-    Updates response status of an emergency alert ('NEW' -> 'ACKNOWLEDGED' -> 'RESPONDING' -> 'RESOLVED').
-    Allowed for Caretaker, Hospital, Police, and Admin roles.
-    """
     alert = db.query(EmergencyAlert).filter(EmergencyAlert.id == alert_id).first()
     if not alert:
         raise HTTPException(status_code=404, detail="Emergency alert record not found.")

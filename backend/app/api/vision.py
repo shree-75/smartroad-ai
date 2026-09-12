@@ -11,6 +11,7 @@ sys.path.insert(0, "C:/Users/srini/smartroad-ai")
 
 from ai.vision.camera import CameraStream
 from ai.pipeline.driver_monitoring_engine import ResearchDriverMonitoringEngine
+from app.services.twilio_service import make_emergency_call, send_emergency_sms
 
 router = APIRouter(prefix="/vision", tags=["Vision Streaming"])
 
@@ -24,6 +25,8 @@ class _CameraEngine:
         self._lock    = threading.Lock()
         self._running = False
         self._latest_frame: bytes = b""
+        self._last_twilio_call_time = 0.0
+        self._last_twilio_status = "IDLE / READY"
         self._latest_metrics: dict = {
             "active": False,
             "person_count": 1,
@@ -49,6 +52,7 @@ class _CameraEngine:
             "posture_status": "NORMAL",
             "risk_score": 18,
             "risk_level": "LOW",
+            "twilio_call_status": "IDLE / READY",
             "fps": 0.0
         }
         self._thread  = None
@@ -98,6 +102,26 @@ class _CameraEngine:
                 phone_status = str(m.get("phone_status", "PHONE: NOT IN USE"))
                 phone_reason = str(m.get("phone_reason", ""))
                 calling_detected = "CALLING" in phone_status or "HAND TO EAR" in phone_status
+                risk_score = int(s.get("score", 18))
+                risk_level = str(s.get("level", "LOW"))
+
+                # 🚨 HIGH RISK TWILIO AUTOMATED EMERGENCY DISPATCH
+                is_high_risk = risk_score >= 60 or risk_level in ["HIGH", "CRITICAL"] or phone_detected or calling_detected
+                now = time.time()
+
+                if is_high_risk and (now - self._last_twilio_call_time > 45.0):
+                    self._last_twilio_call_time = now
+                    reason = f"High Risk ({risk_score}/100) - {phone_status}" if phone_detected else f"High Driver Risk ({risk_score}/100)"
+                    self._last_twilio_status = f"📞 CONNECTING TWILIO CALL ({reason})"
+
+                    def _async_twilio_dispatch(r_text, score):
+                        call_res = make_emergency_call(alert_reason=r_text)
+                        sms_res = send_emergency_sms(f"🚨 SMARTROAD AI CRITICAL ALERT! Driver risk score is {score}/100. Event: {r_text}.")
+                        status_str = call_res.get("status", "DISPATCHED")
+                        msg = call_res.get("message", "Emergency Call Connect Triggered")
+                        self._last_twilio_status = f"📞 {status_str}: {msg}"
+
+                    threading.Thread(target=_async_twilio_dispatch, args=(reason, risk_score), daemon=True).start()
 
                 metrics_snapshot = {
                     "active": True,
@@ -122,8 +146,9 @@ class _CameraEngine:
                     "roll": round(float(m.get("roll", 0.0)), 1),
                     "head_orientation": str(m.get("head_orientation", "LOOKING_FORWARD")),
                     "posture_status": str(m.get("posture_status", "NORMAL")),
-                    "risk_score": int(s.get("score", 18)),
-                    "risk_level": str(s.get("level", "LOW")),
+                    "risk_score": risk_score,
+                    "risk_level": risk_level,
+                    "twilio_call_status": self._last_twilio_status,
                     "fps": round(fps_val, 1)
                 }
 
